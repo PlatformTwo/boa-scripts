@@ -1,0 +1,81 @@
+# V501 # common sub expressions
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+dups : set of Expression;
+
+# operates like a switch statements, gives me the operator that has an issue
+kindToString := function(node : Expression): string {
+    switch(node.kind) {
+    case ExpressionKind.LOGICAL_OR : return "||";
+    case ExpressionKind.LOGICAL_AND: return "&&";
+    case ExpressionKind.BIT_OR : return "|";
+    case ExpressionKind.BIT_AND : return "&";
+    case ExpressionKind.LT : return "<";
+    case ExpressionKind.LTEQ : return "<=";
+    case ExpressionKind.GT : return ">";
+    case ExpressionKind.GTEQ : return ">=";
+    case ExpressionKind.EQ : return "==";
+    case ExpressionKind.OP_SUB : return "-";
+    case ExpressionKind.OP_DIV : return "/";
+    default : break;
+    }
+    return "impossible";
+};
+
+checkRedundant := function(node : Expression): bool {
+    kind : string;
+    foreach (i: int; def(node.expressions[i])) {
+        if (contains(dups, node.expressions[i])) {
+            kind = kindToString(node);
+            REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %s ++ %d ++ %d", P.project_url, cur_file, cur_method, kind, i, len(node.expressions));
+        }
+        add(dups, node.expressions[i]);
+    }
+    clear(dups); # using a global structure better? Dunno...
+    return true;
+};
+
+# input: node
+visit(P, visitor {
+  # node matches CodeRepository
+  before node: CodeRepository -> { # array, a list of all code repositories in this project
+    snapshot := getsnapshot(node); # return a snapshot of changed files. if no time is given, 'now' is used. can also add filters
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+  # all files in the revision
+  before node: ChangedFile -> cur_file = string(node);
+  # methods
+  before node: Method -> {
+    cur_method = node.name;
+  }
+
+  before node: Statement -> {
+      # if if statement
+        if (node.kind == StatementKind.IF)
+            # visit if condition (def(node.condition)) maybe??
+            visit(node.expression, visitor {
+                before node: Expression -> {
+                    # if the type of the node rooting this expression is or...
+                    if (node.kind == ExpressionKind.LOGICAL_OR ||
+                        node.kind == ExpressionKind.LOGICAL_AND ||
+                        node.kind == ExpressionKind.BIT_OR ||
+                        node.kind == ExpressionKind.BIT_AND ||
+                        node.kind == ExpressionKind.LT ||
+                        node.kind == ExpressionKind.LTEQ ||
+                        node.kind == ExpressionKind.GT ||
+                        node.kind == ExpressionKind.GTEQ ||
+                        node.kind == ExpressionKind.EQ ||
+                        node.kind == ExpressionKind.OP_SUB ||
+                        node.kind == ExpressionKind.OP_DIV)  {
+                            checkRedundant(node);
+                    }
+                }
+            });
+  }
+});

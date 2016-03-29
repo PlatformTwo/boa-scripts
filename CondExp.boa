@@ -1,0 +1,48 @@
+# V517 # consecutive IF, clones, doesn't detect non-consectives :(
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;                                                                   
+cur_method: string;
+
+dups : set of Expression;
+
+ctr : int;
+
+# input: node                                                                       
+visit(P, visitor {                                                              
+  # node matches CodeRepository                                                     
+  before node: CodeRepository -> { # array, a list of all code repositories in this project
+    snapshot := getsnapshot(node); # return a snapshot of changed files. if no time is given, 'now' is used. can also add filters
+    foreach (i: int; def(snapshot[i]))                                              
+      visit(snapshot[i]);                                                           
+    stop;                                                                           
+  }                                                                                 
+  # all files in the revision                                                       
+  before node: ChangedFile -> cur_file = string(node);                              
+  # methods                                                                         
+  before node: Method -> {
+    # clear for every method
+    # clear(dups);
+    cur_method = node.name;     
+    ctr = 0;
+  }                                                                                 
+
+  before node: Statement -> {                                                       
+    if (node.kind == StatementKind.IF) {   
+        if(len(node.statements) == 2) { # must be if /else at least (exactly)
+            if (def(node.expression)) {
+                add(dups,node.expression);
+            }
+            
+            if (def(node.statements[1].expression)) {
+                if (contains(dups, node.statements[1].expression)) {
+                    REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %d", P.project_url, cur_file, cur_method, ctr);
+                }
+            }
+            clear(dups);
+        }
+        ctr = ctr + 1;
+    }
+  }
+});

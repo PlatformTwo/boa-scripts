@@ -1,0 +1,61 @@
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+dups : set of Expression;
+
+ctr : int;
+
+contains_method : bool;
+
+containsMethodCall := function(expnode : Expression): bool {
+    contains_method = false;
+    visit (expnode, visitor {
+      before node : Expression -> {
+          if (def(node.method)) {contains_method = true; stop;}
+      }
+    });
+    return contains_method;
+};
+
+# input: node
+visit(P, visitor {
+  # node matches CodeRepository
+  before node: CodeRepository -> {
+    snapshot := getsnapshot(node);
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+  # all files in the revision
+  before node: ChangedFile -> cur_file = string(node);
+  # methods
+  before node: Method -> {
+    # clear for every method
+    # clear(dups);
+    cur_method = node.name;
+    ctr = 0;
+  }
+
+  before node: Statement -> {
+    if (node.kind == StatementKind.IF) {
+        if(len(node.statements) == 2) {
+            if (def(node.expression)) {
+                add(dups,node.expression);
+            }
+
+            if (def(node.statements[1].expression)) {
+                if (contains(dups, node.statements[1].expression)) {
+                  if (!containsMethodCall(node.statements[1].expression)) {
+                    REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %d", P.project_url, cur_file, cur_method, ctr);
+                  }
+                }
+            }
+            clear(dups);
+        }
+        ctr = ctr + 1;
+    }
+  }
+});

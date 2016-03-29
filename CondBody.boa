@@ -1,0 +1,34 @@
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+ctr : int;
+
+visit(P, visitor {
+  before node: CodeRepository -> {
+    snapshot := getsnapshot(node);
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+
+  before node: Method -> {
+    cur_method = node.name;
+    ctr = 0;
+  }
+
+  before node: ChangedFile -> cur_file = string(node);
+
+  before node: Statement -> {
+      if (node.kind == StatementKind.IF) {
+        if(len(node.statements) == 2) {
+          if (node.statements[0] == node.statements[1]) {
+            REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %d", P.project_url, cur_file, cur_method, ctr);
+          }
+        }
+        ctr = ctr + 1;
+      }
+  }
+});

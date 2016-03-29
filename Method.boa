@@ -1,0 +1,36 @@
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+meth_stmts : set of Statement;
+
+hashes : set of int;
+current_hash : int;
+
+visit(P, visitor {
+  before node: CodeRepository -> {
+    snapshot := getsnapshot(node);
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+
+  before node: ChangedFile -> cur_file = string(node);
+
+  before node: Declaration -> clear(hashes);
+
+  before node: Method -> {
+    cur_method = node.name;
+    current_hash = hash(node);
+    if (contains(hashes, current_hash)) {
+        REDUNDANT[P.id] << format("%s ++ %s ++ %s", P.project_url, cur_file, cur_method);
+    }
+    add(hashes,current_hash);
+  }
+
+  after node : Declaration -> clear(hashes);
+
+  after node: ChangedFile -> clear(hashes);
+});

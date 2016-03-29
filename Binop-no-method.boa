@@ -1,0 +1,89 @@
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+dups : set of Expression;
+
+contains_method : bool;
+
+containsMethodCall := function(expnode : Expression): bool {
+    contains_method = false;
+    visit (expnode, visitor {
+      before node : Expression -> {
+          if (def(node.method)) {contains_method = true; stop;}
+      }
+    });
+    return contains_method;
+};
+
+kindToString := function(node : Expression): string {
+    switch(node.kind) {
+    case ExpressionKind.LOGICAL_OR : return "||";
+    case ExpressionKind.LOGICAL_AND: return "&&";
+    case ExpressionKind.BIT_OR : return "|";
+    case ExpressionKind.BIT_AND : return "&";
+    case ExpressionKind.LT : return "<";
+    case ExpressionKind.LTEQ : return "<=";
+    case ExpressionKind.GT : return ">";
+    case ExpressionKind.GTEQ : return ">=";
+    case ExpressionKind.EQ : return "==";
+    case ExpressionKind.OP_SUB : return "-";
+    case ExpressionKind.OP_DIV : return "/";
+    default : break;
+    }
+    return "impossible";
+};
+
+checkRedundant := function(node : Expression): bool {
+    kind : string;
+    foreach (i: int; def(node.expressions[i])) {
+        if (contains(dups, node.expressions[i])) {
+          if (!containsMethodCall(node.expressions[i])) {
+            kind = kindToString(node);
+            REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %s ++ %d ++ %d", P.project_url, cur_file, cur_method, kind, i, len(node.expressions));
+          }
+        }
+        add(dups, node.expressions[i]);
+    }
+    clear(dups);
+    return true;
+};
+
+visit(P, visitor {
+  # node matches CodeRepository
+  before node: CodeRepository -> {
+    snapshot := getsnapshot(node);
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+
+  before node: ChangedFile -> cur_file = string(node);
+
+  before node: Method -> {
+    cur_method = node.name;
+  }
+
+  before node: Statement -> {
+        if (node.kind == StatementKind.IF)
+            visit(node.expression, visitor {
+                before node: Expression -> {
+                    if (node.kind == ExpressionKind.LOGICAL_OR ||
+                        node.kind == ExpressionKind.LOGICAL_AND ||
+                        node.kind == ExpressionKind.BIT_OR ||
+                        node.kind == ExpressionKind.BIT_AND ||
+                        node.kind == ExpressionKind.LT ||
+                        node.kind == ExpressionKind.LTEQ ||
+                        node.kind == ExpressionKind.GT ||
+                        node.kind == ExpressionKind.GTEQ ||
+                        node.kind == ExpressionKind.EQ ||
+                        node.kind == ExpressionKind.OP_SUB ||
+                        node.kind == ExpressionKind.OP_DIV)  {
+                            checkRedundant(node);
+                    }
+                }
+            });
+  }
+});

@@ -1,0 +1,64 @@
+REDUNDANT: output collection[string] of string;
+P : Project = input;
+
+cur_file: string;
+cur_method: string;
+
+dups : set of Expression;
+
+prev_var_name : string;
+rhs : Expression;
+hit : bool;
+
+rhsexps : set of Expression;
+
+this_stmt : Statement;
+next_stmt : Statement;
+
+visit(P, visitor {
+  before node: CodeRepository -> {
+    snapshot := getsnapshot(node);
+    foreach (i: int; def(snapshot[i]))
+      visit(snapshot[i]);
+    stop;
+  }
+
+  before node: ChangedFile -> cur_file = string(node);
+  before node: Method -> {
+    cur_method = node.name;
+    if (len(node.statements) > 0) {
+    if (def(node.statements[0])) {
+        foreach (i: int; def(node.statements[0].statements[i])) {
+            if (i+1 < len(node.statements[0].statements)) {
+            if (def(node.statements[0].statements[i+1])) {
+              this_stmt = node.statements[0].statements[i];
+              next_stmt = node.statements[0].statements[i+1];
+                if (this_stmt.expression == next_stmt.expression
+                && this_stmt.expression.kind == ExpressionKind.ASSIGN) {
+                    if (def(this_stmt.expression.expressions[0].variable)) {
+                        foreach (q: int; def(this_stmt.expression.expressions[q])) {
+                            if (q != 0)
+                                visit (this_stmt.expression.expressions[q], visitor {
+                                  before node : Expression -> {
+                                      if (def(node.method)) { add(rhsexps, this_stmt.expression.expressions[0]); stop;}
+                                        add(rhsexps, node);
+                                  }
+                                });
+                        }
+                        if (!contains(rhsexps, this_stmt.expression.expressions[0])) {
+                            if (len(node.statements[0].statements[i].expression.expressions[0].variable) > 0) {
+                                REDUNDANT[P.id] << format("%s ++ %s ++ %s ++ %s", P.project_url, cur_file, cur_method, node.statements[0].statements[i].expression.expressions[0].variable);
+                            }
+                        }
+                        clear(rhsexps);
+                    }
+                }
+            }
+            }
+        }
+    }
+    }
+  }
+  after node: Method -> {
+  }
+});
